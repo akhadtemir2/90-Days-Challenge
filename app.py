@@ -1,5 +1,5 @@
 """
-Growth OS — Полная рабочая версия (с удалением, редактированием и сохранением)
+Growth OS — Railway Production (single file, no templates dependency)
 """
 from flask import Flask, jsonify, request, Response
 import json, os, shutil, logging, pathlib
@@ -16,199 +16,1032 @@ BACKUP_DIR.mkdir(exist_ok=True)
 app = Flask(__name__)
 app.config["JSON_ENSURE_ASCII"] = False
 
-# ── ОЖИВЛЕННЫЙ ИНТЕРФЕЙС ──────────────────────────────────────────────────────
+# ── Embedded HTML (Весь фронтенд вшит сюда) ────────────────────────────────
 HTML = """<!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Growth OS</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <style>
-        *{box-sizing:border-box;margin:0;padding:0;font-family:'Inter',sans-serif}
-        body{background:#070707;color:#fff;padding:20px}
-        .container{max-width:500px;margin:0 auto}
-        .header{text-align:center;margin-bottom:30px}
-        .timer{font-size:24px;font-weight:800;color:#f59e0b;margin:10px 0}
-        .progress-circle{width:80px;height:80px;border-radius:50%;border:4px solid #222;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-weight:800;font-size:18px;border-top-color:#22c55e}
-        
-        .section{background:#111;border-radius:15px;padding:15px;margin-bottom:20px;border:1px solid #222}
-        .section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
-        .section-title{display:flex;align-items:center;gap:10px;cursor:pointer}
-        .section-title:hover{opacity:0.8}
-        
-        .task-item{display:flex;justify-content:space-between;align-items:center;background:#181818;padding:12px;border-radius:10px;margin-bottom:8px;transition:0.2s}
-        .task-left{display:flex;align-items:center;gap:12px;flex:1}
-        .task-name{font-size:14px;cursor:pointer}
-        .task-name.done{text-decoration:line-through;opacity:0.4}
-        
-        input[type="checkbox"]{width:20px;height:20px;accent-color:#22c55e;cursor:pointer}
-        
-        .btn-add{background:#222;border:none;color:#888;padding:8px 15px;border-radius:8px;cursor:pointer;font-size:12px}
-        .btn-add:hover{background:#333;color:#fff}
-        .btn-del{background:none;border:none;color:#444;cursor:pointer;padding:5px;font-size:16px}
-        .btn-del:hover{color:#ef4444}
-        
-        .footer-nav{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:20px;background:rgba(0,0,0,0.8);padding:10px 20px;border-radius:30px;backdrop-filter:blur(10px);border:1px solid #333}
-        .nav-item{color:#666;text-decoration:none;font-size:20px}
-        .nav-item.active{color:#fff}
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Growth OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#070707;--bg2:#0f0f0f;--bg3:#161616;--bg4:#1c1c1c;--bg5:#242424;
+  --b1:#1a1a1a;--b2:#252525;--b3:#303030;
+  --t1:#efefef;--t2:#909090;--t3:#505050;--t4:#2a2a2a;
+  --green:#22c55e;--gbg:#071510;--gb:#166534;
+  --amber:#f59e0b;--abg:#130d00;--ab:#78350f;
+  --purple:#a78bfa;--pbg:#0e0820;--pb:#4c1d95;
+  --blue:#60a5fa;--bbg:#060f1e;
+  --red:#f87171;--rbg:#130505;
+  --teal:#2dd4bf;--tealbg:#061412;
+  --sidebar-w:240px;
+  --r6:6px;--r8:8px;--r12:12px;--r16:16px;--r20:20px;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--t1);font-family:'Inter',system-ui,sans-serif;min-height:100vh;font-size:14px;line-height:1.5;overflow-x:hidden}
+
+/* ── Layout ── */
+.layout{display:flex;min-height:100vh}
+.sidebar{width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--b1);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:50;transition:transform .25s ease}
+.main{margin-left:var(--sidebar-w);flex:1;min-height:100vh;background:var(--bg)}
+.content{max-width:900px;margin:0 auto;padding:32px 28px 80px}
+
+/* Mobile sidebar */
+@media(max-width:768px){
+  .sidebar{transform:translateX(-100%)}
+  .sidebar.open{transform:translateX(0)}
+  .main{margin-left:0}
+  .mob-bar{display:flex}
+  .content{padding:16px 16px 80px}
+}
+.mob-bar{display:none;align-items:center;gap:12px;padding:12px 16px;background:var(--bg2);border-bottom:1px solid var(--b1);position:sticky;top:0;z-index:40}
+.mob-menu-btn{background:none;border:none;color:var(--t1);font-size:20px;cursor:pointer;padding:4px}
+.mob-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:49}
+.mob-overlay.show{display:block}
+
+/* ── Sidebar ── */
+.sb-top{padding:20px 16px 8px}
+.logo{font-size:17px;font-weight:800;letter-spacing:-.5px;color:var(--t1);display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--amber)}
+.sb-section{padding:4px 0}
+.sb-label{font-size:10px;font-weight:700;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;padding:8px 14px 4px}
+.nav-btn{display:flex;align-items:center;gap:9px;width:100%;padding:8px 14px;border:none;background:none;color:var(--t2);font-size:13px;font-weight:500;cursor:pointer;border-radius:var(--r8);transition:all .12s;text-align:left;font-family:'Inter',sans-serif}
+.nav-btn:hover{background:var(--bg3);color:var(--t1)}
+.nav-btn.active{background:var(--bg4);color:var(--t1)}
+.nav-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0}
+.nav-btn .badge{margin-left:auto;background:var(--bg5);color:var(--t3);font-size:10px;padding:1px 6px;border-radius:10px}
+.sb-divider{height:1px;background:var(--b1);margin:6px 14px}
+.sb-footer{margin-top:auto;padding:12px 14px;border-top:1px solid var(--b1)}
+.streak-card{background:var(--gbg);border:1px solid var(--gb);border-radius:var(--r12);padding:12px}
+.streak-card .sc-top{display:flex;align-items:center;gap:8px}
+.streak-card .sc-num{font-size:28px;font-weight:800;color:var(--green);line-height:1}
+.streak-card .sc-label{font-size:12px;color:var(--green);opacity:.8;line-height:1.3}
+.streak-dots-mini{display:flex;gap:3px;margin-top:8px;flex-wrap:wrap}
+.sdm{width:14px;height:14px;border-radius:3px}
+.sdm.d{background:var(--gbg);border:1px solid var(--gb)}
+.sdm.t{background:var(--abg);border:1px solid var(--amber)}
+.sdm.e{background:var(--bg4);border:1px solid var(--b2)}
+
+/* ── Page header ── */
+.ph{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;gap:16px}
+.ph-left h1{font-size:22px;font-weight:800;letter-spacing:-.5px}
+.ph-left p{font-size:13px;color:var(--t3);margin-top:3px}
+.day-box{text-align:right;flex-shrink:0}
+.day-box .dn{font-size:44px;font-weight:800;color:var(--t1);line-height:1;letter-spacing:-2px}
+.day-box .dl{font-size:11px;color:var(--t3)}
+
+/* ── Timer ── */
+.timer{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px}
+.tc{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r12);padding:14px 6px;text-align:center;transition:border-color .2s}
+.tc:hover{border-color:var(--b3)}
+.tc-n{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-1px;line-height:1}
+.tc-l{font-size:9px;color:var(--t3);margin-top:5px;text-transform:uppercase;letter-spacing:.1em;font-weight:600}
+
+/* ── Alert bar ── */
+.alert{border-radius:var(--r12);padding:12px 16px;font-size:13px;line-height:1.5;margin-bottom:18px;border:1px solid;display:flex;align-items:flex-start;gap:10px}
+.alert-icon{font-size:16px;flex-shrink:0;margin-top:1px}
+.alert.warn{background:var(--abg);border-color:var(--ab);color:var(--amber)}
+.alert.ok{background:var(--gbg);border-color:var(--gb);color:var(--green)}
+.alert.info{background:var(--bbg);border-color:#1a3a6a;color:var(--blue)}
+
+/* ── Stats row ── */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:18px}
+.stat{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r12);padding:14px}
+.stat .sl{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
+.stat .sv{font-size:24px;font-weight:800;line-height:1}
+.stat .sd{font-size:11px;color:var(--t3);margin-top:3px}
+
+/* ── Card ── */
+.card{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r16);padding:20px;margin-bottom:10px;transition:border-color .2s}
+.card:hover{border-color:var(--b2)}
+.card.clickable{cursor:pointer}
+.card.clickable:hover{border-color:var(--b3)}
+.card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.card-label{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.09em}
+.card-accent{font-size:13px;font-weight:700}
+
+/* ── Progress ── */
+.prog{margin-bottom:6px}
+.prog-row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px}
+.prog-row .pl{color:var(--t3)}
+.prog-row .pr{font-weight:600}
+.prog-bar{background:var(--bg4);border-radius:3px;height:4px;overflow:hidden}
+.prog-fill{height:100%;border-radius:3px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+
+/* ── Task ── */
+.task{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b1);cursor:default}
+.task:last-child{border-bottom:none}
+.task:hover .tdel{opacity:.5}
+.cb{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--b3);flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.cb:hover{border-color:var(--t3)}
+.cb.on{border-color:transparent}
+.cb.on::after{content:'';display:block;width:4px;height:7px;border:2px solid #000;border-top:none;border-left:none;transform:rotate(45deg) translateY(-1px)}
+.task-name{flex:1;font-size:13px;user-select:none;transition:color .15s}
+.task-name.done{color:var(--t3);text-decoration:line-through}
+.tdel{font-size:17px;color:var(--t3);cursor:pointer;opacity:0;padding:0 4px;transition:opacity .15s;line-height:1}
+.tdel:hover{color:var(--red);opacity:1!important}
+.add-row{display:flex;gap:8px;margin-top:12px}
+.add-row input{flex:1}
+
+/* ── Form ── */
+input,textarea,select{background:var(--bg3);border:1px solid var(--b2);border-radius:var(--r8);padding:9px 12px;font-size:13px;color:var(--t1);outline:none;font-family:'Inter',sans-serif;width:100%;transition:border-color .15s}
+input:focus,textarea:focus,select:focus{border-color:var(--b3);background:var(--bg4)}
+input[type=date]{color-scheme:dark}
+textarea{resize:vertical;min-height:80px;line-height:1.6}
+select{cursor:pointer}
+select option{background:var(--bg3)}
+.fg{margin-bottom:12px}
+.fg label{display:block;font-size:11px;font-weight:700;color:var(--t3);margin-bottom:5px;text-transform:uppercase;letter-spacing:.07em}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:600px){.grid2{grid-template-columns:1fr}.grid4{grid-template-columns:1fr 1fr}}
+
+/* ── Button ── */
+.btn{background:var(--bg3);border:1px solid var(--b2);border-radius:var(--r8);padding:9px 16px;font-size:13px;font-weight:500;color:var(--t1);cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;transition:all .15s}
+.btn:hover{background:var(--bg4);border-color:var(--b3)}
+.btn:active{transform:scale(.97)}
+.btn-amber{background:var(--amber);border-color:var(--amber);color:#000;font-weight:600}
+.btn-amber:hover{background:#d97706;border-color:#d97706}
+.btn-green{background:var(--gbg);border-color:var(--gb);color:var(--green)}
+.btn-red{background:var(--rbg);border-color:#5a2020;color:var(--red)}
+.btn-full{width:100%;justify-content:center;margin-top:10px}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-icon{padding:7px 9px;font-size:15px}
+
+/* ── History chart ── */
+.chart-wrap{height:80px;display:flex;align-items:flex-end;gap:3px;margin-top:12px}
+.bar{flex:1;background:var(--bg4);border-radius:3px 3px 0 0;min-height:4px;transition:height .4s ease;position:relative;cursor:default}
+.bar:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);background:var(--bg5);color:var(--t1);font-size:10px;padding:2px 6px;border-radius:4px;white-space:nowrap;pointer-events:none;z-index:10}
+
+/* ── Note ── */
+.note{background:var(--bg3);border-radius:var(--r12);padding:14px;margin-bottom:8px;border:1px solid var(--b1);transition:border-color .15s}
+.note:hover{border-color:var(--b2)}
+.note-txt{font-size:13px;color:var(--t2);line-height:1.6;white-space:pre-wrap}
+.note-date{font-size:11px;color:var(--t3);margin-top:6px}
+.note-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px}
+
+/* ── Idea ── */
+.idea{background:var(--bg3);border-left:3px solid var(--amber);border-radius:0 var(--r8) var(--r8) 0;padding:12px 16px;font-size:13px;color:var(--t2);line-height:1.6;margin:10px 0;min-height:44px}
+
+/* ── Modal ── */
+.modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px;backdrop-filter:blur(4px)}
+.modal{background:var(--bg2);border:1px solid var(--b2);border-radius:var(--r20);padding:24px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.modal-title{font-size:17px;font-weight:700;margin-bottom:18px;letter-spacing:-.3px}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.colors{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
+.color-swatch{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .15s}
+.color-swatch:hover{transform:scale(1.15)}
+.color-swatch.sel{border-color:white;transform:scale(1.1)}
+
+/* ── Toast ── */
+#toast-wrap{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{background:var(--bg3);border:1px solid var(--b2);border-radius:var(--r12);padding:11px 16px;font-size:13px;color:var(--t1);display:flex;align-items:center;gap:8px;animation:slideIn .25s ease;box-shadow:0 4px 20px rgba(0,0,0,.4);pointer-events:auto}
+.toast.ok{border-color:var(--gb);color:var(--green)}
+.toast.err{border-color:#5a2020;color:var(--red)}
+@keyframes slideIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes slideOut{to{transform:translateX(20px);opacity:0}}
+.toast.out{animation:slideOut .25s ease forwards}
+
+/* ── Kbd shortcut ── */
+kbd{background:var(--bg4);border:1px solid var(--b3);border-radius:4px;padding:1px 5px;font-size:11px;font-family:'Inter',sans-serif;color:var(--t3)}
+
+/* ── Misc ── */
+.hidden{display:none!important}
+.sep{height:1px;background:var(--b1);margin:14px 0}
+.empty{color:var(--t3);font-size:13px;padding:8px 0}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px}
+</style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="progress-circle" id="dayProgress">0%</div>
-            <h1>Growth OS</h1>
-            <div class="timer" id="countdown">Загрузка...</div>
-        </div>
 
-        <div id="sectionsList"></div>
+<div id="mob-overlay" class="mob-overlay" onclick="closeMobile()"></div>
+
+<div class="layout">
+<nav class="sidebar" id="sidebar">
+  <div class="sb-top">
+    <div class="logo"><div class="logo-dot"></div>Growth OS</div>
+    <div class="sb-section">
+      <div class="sb-label">Обзор</div>
+      <button class="nav-btn active" id="nb-dashboard" onclick="go('dashboard')"><span class="nav-icon">◈</span>Дашборд</button>
+      <button class="nav-btn" id="nb-today" onclick="go('today')"><span class="nav-icon">✓</span>Сегодня</button>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-section">
+      <div class="sb-label">Мои разделы</div>
+      <div id="sb-sections"></div>
+      <button class="nav-btn" style="color:var(--amber)" onclick="openModal('addSec')"><span class="nav-icon">+</span>Новый раздел</button>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-section">
+      <div class="sb-label">Аналитика</div>
+      <button class="nav-btn" id="nb-stats" onclick="go('stats')"><span class="nav-icon">📊</span>Статистика</button>
+      <button class="nav-btn" id="nb-history" onclick="go('history')"><span class="nav-icon">📈</span>История</button>
+      <button class="nav-btn" id="nb-notes" onclick="go('notes')"><span class="nav-icon">📝</span>Заметки</button>
+      <button class="nav-btn" id="nb-settings" onclick="go('settings')"><span class="nav-icon">⚙</span>Настройки</button>
+    </div>
+  </div>
+  <div class="sb-footer">
+    <div class="streak-card">
+      <div class="sc-top">
+        <div class="sc-num" id="sb-streak">1</div>
+        <div class="sc-label">дней<br>подряд</div>
+      </div>
+      <div class="streak-dots-mini" id="sb-dots"></div>
+    </div>
+  </div>
+</nav>
+
+<div class="main">
+  <div class="mob-bar">
+    <button class="mob-menu-btn" onclick="openMobile()">☰</button>
+    <span style="font-size:15px;font-weight:700">Growth OS</span>
+  </div>
+
+  <div class="content">
+
+    <div id="p-dashboard" class="page">
+      <div class="ph">
+        <div class="ph-left"><h1>Дашборд</h1><p id="dateStr">...</p></div>
+        <div class="day-box"><div class="dn" id="dayNum">1</div><div class="dl">из 90 дней</div></div>
+      </div>
+      <div class="timer">
+        <div class="tc"><div class="tc-n" id="td">00</div><div class="tc-l">дней</div></div>
+        <div class="tc"><div class="tc-n" id="th">00</div><div class="tc-l">часов</div></div>
+        <div class="tc"><div class="tc-n" id="tm">00</div><div class="tc-l">минут</div></div>
+        <div class="tc"><div class="tc-n" id="ts">00</div><div class="tc-l">секунд</div></div>
+      </div>
+      <div id="dash-alert" class="alert warn"><span class="alert-icon">⚡</span><span id="dash-alert-txt">...</span></div>
+      <div class="stats-row" id="dash-stats"></div>
+      <div id="dash-sections"></div>
     </div>
 
-    <script>
-        let appData = {};
+    <div id="p-today" class="page hidden">
+      <div class="ph"><div class="ph-left"><h1>Сегодня</h1><p>Все задачи на сегодня</p></div></div>
+      <div id="today-content"></div>
+    </div>
 
-        async function loadData() {
-            const res = await fetch('/api/data');
-            appData = await res.json();
-            renderAll();
-        }
+    <div id="section-pages"></div>
 
-        async function saveAll() {
-            await fetch('/api/save', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(appData)
-            });
-            renderAll();
-        }
+    <div id="p-stats" class="page hidden">
+      <div class="ph"><div class="ph-left"><h1>Статистика</h1><p>YouTube и тело</p></div></div>
+      <div class="card">
+        <div class="card-top"><div class="card-label">YouTube / Shorts</div></div>
+        <div class="grid4" style="margin-bottom:14px">
+          <div class="fg"><label>Видео сегодня +</label><input type="number" id="sVid" placeholder="0" min="0"></div>
+          <div class="fg"><label>Просмотры всего</label><input type="number" id="sViews" placeholder="0" min="0"></div>
+          <div class="fg"><label>Подписчики</label><input type="number" id="sSubs" placeholder="0" min="0"></div>
+          <div class="fg"><label>Доход $</label><input type="number" id="sInc" placeholder="0" min="0" step="0.01"></div>
+        </div>
+        <button class="btn btn-amber btn-full" onclick="saveStats()">Сохранить статистику</button>
+      </div>
+      <div class="card">
+        <div class="card-top"><div class="card-label">Вес</div><span id="curr-weight" style="font-size:13px;color:var(--t3)"></span></div>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div style="flex:1"><div class="fg"><label>Текущий вес (кг)</label><input type="number" id="sWt" placeholder="53.0" step="0.1" min="30" max="250"></div></div>
+          <button class="btn btn-green" style="margin-bottom:12px" onclick="saveWeight()">Записать</button>
+        </div>
+        <div id="weight-prog"></div>
+      </div>
+      <div class="card">
+        <div class="card-top"><div class="card-label">Идея для следующего шорта</div></div>
+        <div class="idea" id="ideaBox">...</div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button class="btn" onclick="nextIdea()">Другая идея →</button>
+          <button class="btn" onclick="copyIdea()">Скопировать</button>
+        </div>
+      </div>
+    </div>
 
-        function renderAll() {
-            // Таймер
-            const end = new Date(appData.end_date);
-            const now = new Date();
-            const diff = end - now;
-            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-            document.getElementById('countdown').innerText = days + " ДНЕЙ ОСТАЛОСЬ";
+    <div id="p-history" class="page hidden">
+      <div class="ph"><div class="ph-left"><h1>История</h1><p>Прогресс по дням</p></div></div>
+      <div class="card">
+        <div class="card-top"><div class="card-label">Выполнение задач по дням (%)</div></div>
+        <div class="chart-wrap" id="pct-chart"></div>
+      </div>
+      <div class="card">
+        <div class="card-top"><div class="card-label">История веса (кг)</div></div>
+        <div class="chart-wrap" id="weight-chart"></div>
+      </div>
+      <div class="card">
+        <div class="card-top"><div class="card-label">Видео выложено по дням</div></div>
+        <div class="chart-wrap" id="video-chart"></div>
+      </div>
+    </div>
 
-            // Секции
-            const list = document.getElementById('sectionsList');
-            list.innerHTML = '';
-            
-            let totalTasks = 0;
-            let doneTasks = 0;
+    <div id="p-notes" class="page hidden">
+      <div class="ph"><div class="ph-left"><h1>Заметки</h1><p id="notes-count">0 заметок</p></div></div>
+      <div class="card">
+        <textarea id="noteInput" placeholder="Мысли, идеи, инсайты, планы..."></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+          <select id="noteTag" style="width:auto;flex:1">
+            <option value="">Без тега</option>
+            <option value="💡 Идея">💡 Идея</option>
+            <option value="🧠 Инсайт">🧠 Инсайт</option>
+            <option value="⚠️ Проблема">⚠️ Проблема</option>
+            <option value="✅ Решение">✅ Решение</option>
+            <option value="🎯 Цель">🎯 Цель</option>
+          </select>
+          <button class="btn btn-amber" onclick="addNote()">+ Сохранить</button>
+        </div>
+      </div>
+      <div id="notesList"></div>
+    </div>
 
-            appData.sections.forEach(sec => {
-                let tasksHtml = '';
-                sec.tasks.forEach((task, idx) => {
-                    totalTasks++;
-                    if(task.done) doneTasks++;
-                    tasksHtml += `
-                        <div class="task-item">
-                            <div class="task-left">
-                                <input type="checkbox" ${task.done ? 'checked' : ''} onchange="toggleTask('${sec.id}', ${idx})">
-                                <span class="task-name ${task.done ? 'done' : ''}">${task.name}</span>
-                            </div>
-                            <button class="btn-del" onclick="deleteTask('${sec.id}', ${idx})">🗑️</button>
-                        </div>
-                    `;
-                });
+    <div id="p-settings" class="page hidden">
+      <div class="ph"><div class="ph-left"><h1>Настройки</h1></div></div>
+      <div class="card">
+        <div class="card-top"><div class="card-label">Даты проекта</div></div>
+        <div class="grid2">
+          <div class="fg"><label>Дата старта</label><input type="date" id="setStart"></div>
+          <div class="fg"><label>Дата финала</label><input type="date" id="setEnd"></div>
+        </div>
+        <button class="btn btn-amber" onclick="saveDates()">Сохранить даты</button>
+      </div>
+      <div class="card">
+        <div class="card-top"><div class="card-label">Разделы</div></div>
+        <div id="settings-secs"></div>
+        <button class="btn" style="margin-top:10px" onclick="openModal('addSec')">+ Добавить раздел</button>
+      </div>
+      <div class="card">
+        <div class="card-top"><div class="card-label">Данные</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" onclick="exportData()">Экспорт JSON</button>
+          <button class="btn" onclick="manualBackup()">Создать бэкап</button>
+        </div>
+        <p style="font-size:12px;color:var(--t3);margin-top:8px">Бэкапы создаются автоматически каждый день в папке <code style="background:var(--bg4);padding:1px 5px;border-radius:4px">backups/</code></p>
+      </div>
+      <div class="card" style="border-color:#2a1010">
+        <div class="card-top"><div class="card-label" style="color:var(--red)">Опасная зона</div></div>
+        <p class="empty" style="margin-bottom:10px">Сброс всех данных. Действие необратимо.</p>
+        <button class="btn btn-red" onclick="resetAll()">Сбросить всё</button>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-top"><div class="card-label">Горячие клавиши</div></div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--t2)">
+          <div><kbd>D</kbd> — Дашборд</div>
+          <div><kbd>T</kbd> — Сегодня</div>
+          <div><kbd>S</kbd> — Статистика</div>
+          <div><kbd>N</kbd> — Заметки</div>
+        </div>
+      </div>
+    </div>
 
-                list.innerHTML += `
-                    <div class="section" style="border-top: 3px solid ${sec.color}">
-                        <div class="section-header">
-                            <div class="section-title" onclick="editSection('${sec.id}')">
-                                <span>${sec.icon}</span>
-                                <strong>${sec.title}</strong>
-                            </div>
-                            <button class="btn-add" onclick="addTask('${sec.id}')">+ Добавить</button>
-                        </div>
-                        <div class="tasks">${tasksHtml}</div>
-                    </div>
-                `;
-            });
+  </div></div></div><div id="modal-addSec" class="modal-wrap hidden" onclick="bgClose(event,'addSec')">
+  <div class="modal">
+    <div class="modal-title">Новый раздел</div>
+    <div class="fg"><label>Название *</label><input id="ms-name" type="text" placeholder="Например: Учёба"></div>
+    <div class="fg"><label>Иконка (эмодзи)</label><input id="ms-icon" type="text" placeholder="📚" style="font-size:20px;width:80px"></div>
+    <div class="fg">
+      <label>Цвет</label>
+      <div class="colors">
+        <div class="color-swatch sel" style="background:#f59e0b" onclick="pickColor('#f59e0b',this)"></div>
+        <div class="color-swatch" style="background:#22c55e" onclick="pickColor('#22c55e',this)"></div>
+        <div class="color-swatch" style="background:#a78bfa" onclick="pickColor('#a78bfa',this)"></div>
+        <div class="color-swatch" style="background:#60a5fa" onclick="pickColor('#60a5fa',this)"></div>
+        <div class="color-swatch" style="background:#f87171" onclick="pickColor('#f87171',this)"></div>
+        <div class="color-swatch" style="background:#2dd4bf" onclick="pickColor('#2dd4bf',this)"></div>
+        <div class="color-swatch" style="background:#fb923c" onclick="pickColor('#fb923c',this)"></div>
+      </div>
+      <input type="hidden" id="ms-color" value="#f59e0b">
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('addSec')">Отмена</button>
+      <button class="btn btn-amber" onclick="addSection()">Создать</button>
+    </div>
+  </div>
+</div>
 
-            const pct = totalTasks > 0 ? Math.round((doneTasks/totalTasks)*100) : 0;
-            document.getElementById('dayProgress').innerText = pct + '%';
-        }
+<div id="toast-wrap"></div>
 
-        function toggleTask(secId, idx) {
-            const sec = appData.sections.find(s => s.id === secId);
-            sec.tasks[idx].done = !sec.tasks[idx].done;
-            saveAll();
-        }
+<script>
+const MONTHS = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+const IDEAS = ["«Почему ты прокрастинируешь» — психология за 30 сек","«1 привычка которая изменила всё» — личная история","«Факт о мозге который тебя удивит» — хук с первой секунды","«Правило 2 минут» — как начать делать отложенное","«Дофамин убивает тебя» — драматичный старт","«Делай это 5 мин в день — через месяц не узнаешь себя»","«Ошибка 99% людей с целями»","«Я 18 лет ничего не делал. Что изменилось за 30 дней»","«3 вещи которые я бы сказал себе в 15»","«Тихий час который меняет жизнь»","«Почему богатые рано встают»","«Что происходит с телом без сна»","«Один день из жизни человека с дисциплиной»","«Секрет людей которые всё успевают»"];
+let S = null, ideaIdx = 0, curPage = 'dashboard', pickedColor = '#f59e0b';
 
-        function addTask(secId) {
-            const name = prompt("Что нужно сделать?");
-            if(name) {
-                const sec = appData.sections.find(s => s.id === secId);
-                sec.tasks.push({name: name, done: false});
-                saveAll();
-            }
-        }
+// ── API ──────────────────────────────────────────────────────────────────────
+const api = {
+  get:  url => fetch(url).then(r => r.json()),
+  post: (url,d) => fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(r=>r.json())
+};
 
-        function deleteTask(secId, idx) {
-            if(confirm("Удалить задачу?")) {
-                const sec = appData.sections.find(s => s.id === secId);
-                sec.tasks.splice(idx, 1);
-                saveAll();
-            }
-        }
+// ── INIT ─────────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    S = await api.get('/api/data');
+    render();
+    tick();
+    setInterval(tick, 1000);
+  } catch(e) {
+    toast('Ошибка загрузки данных', 'err');
+    console.error(e);
+  }
+}
 
-        function editSection(secId) {
-            const sec = appData.sections.find(s => s.id === secId);
-            const newTitle = prompt("Новое название приоритета:", sec.title);
-            if(newTitle) {
-                sec.title = newTitle;
-                saveAll();
-            }
-        }
+async function persist() {
+  try {
+    await api.post('/api/save', S);
+  } catch(e) {
+    toast('Ошибка сохранения!', 'err');
+    console.error(e);
+  }
+}
 
-        loadData();
-        setInterval(renderAll, 60000); // Обновлять таймер раз в минуту
-    </script>
+// ── TIMER ────────────────────────────────────────────────────────────────────
+function tick() {
+  const end   = S ? new Date(S.end_date   + 'T00:00:00') : new Date('2026-06-16T00:00:00');
+  const start = S ? new Date(S.start_date + 'T00:00:00') : new Date('2026-03-18T00:00:00');
+  const now   = new Date();
+  const diff  = Math.max(0, end - now);
+  const p = n => String(Math.floor(n)).padStart(2,'0');
+  document.getElementById('td').textContent = p(diff/86400000);
+  document.getElementById('th').textContent = p((diff%86400000)/3600000);
+  document.getElementById('tm').textContent = p((diff%3600000)/60000);
+  document.getElementById('ts').textContent = p((diff%60000)/1000);
+  const day = Math.max(1, Math.min(90, Math.ceil((now-start)/86400000)));
+  document.getElementById('dayNum').textContent = day;
+  const ds = document.getElementById('dateStr');
+  if(ds) ds.textContent = now.getDate()+' '+MONTHS[now.getMonth()]+' '+now.getFullYear();
+}
+
+// ── RENDER ───────────────────────────────────────────────────────────────────
+function render() {
+  if(!S) return;
+  renderSidebar();
+  renderDashboard();
+  renderToday();
+  renderSectionPages();
+  renderStats();
+  renderHistory();
+  renderNotes();
+  renderSettings();
+}
+
+function totalPct() {
+  const all  = (S.sections||[]).flatMap(s => s.tasks||[]);
+  if(!all.length) return {done:0,total:0,pct:0};
+  const done = all.filter(t=>t.done).length;
+  return {done, total:all.length, pct:Math.round(done/all.length*100)};
+}
+
+// ── SIDEBAR ──────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  document.getElementById('sb-streak').textContent = S.streak||1;
+  const days = (S.streak_days||[]).slice(-14);
+  document.getElementById('sb-dots').innerHTML = days.map((d,i,a) => {
+    const c = i===a.length-1 ? 'sdm t' : d ? 'sdm d' : 'sdm e';
+    return `<div class="${c}"></div>`;
+  }).join('');
+
+  document.getElementById('sb-sections').innerHTML = (S.sections||[]).map(sec => `
+    <button class="nav-btn" id="nb-sec-${sec.id}" onclick="go('sec-${sec.id}')">
+      <span class="nav-icon">${sec.icon}</span>
+      <span style="flex:1">${sec.title}</span>
+      <span class="badge">${(sec.tasks||[]).filter(t=>t.done).length}/${(sec.tasks||[]).length}</span>
+    </button>
+  `).join('');
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────────────────────
+function renderDashboard() {
+  const {done,total,pct} = totalPct();
+  const al = document.getElementById('dash-alert');
+  const at = document.getElementById('dash-alert-txt');
+  if(pct===100){al.className='alert ok';at.textContent='Все задачи закрыты. Ты выиграл этот день. Завтра — снова.';}
+  else if(pct>=70){al.className='alert ok';at.textContent='Отличный темп. Осталось совсем немного — закрой день полностью.';}
+  else if(pct>=40){al.className='alert warn';at.textContent='Есть прогресс. Но мало. Сделай ещё одну задачу прямо сейчас.';}
+  else{al.className='alert warn';at.textContent='День идёт. Начни с самого лёгкого — первый шаг запускает всё остальное.';}
+
+  const st = S.stats||{};
+  const w  = parseFloat(st.weight)||53;
+  document.getElementById('dash-stats').innerHTML = `
+    <div class="stat"><div class="sl">День</div><div class="sv">${pct}<span style="font-size:16px;color:var(--t3)">%</span></div><div class="sd">${done}/${total} задач</div></div>
+    <div class="stat"><div class="sl">Streak</div><div class="sv" style="color:var(--green)">${S.streak||1}</div><div class="sd">дней подряд</div></div>
+    <div class="stat"><div class="sl">Видео</div><div class="sv">${st.videos||0}</div><div class="sd">всего</div></div>
+    <div class="stat"><div class="sl">Вес</div><div class="sv">${w.toFixed(1)}</div><div class="sd">из 60 кг</div></div>
+  `;
+
+  document.getElementById('dash-sections').innerHTML = (S.sections||[]).map(sec => {
+    const tasks = sec.tasks||[];
+    const d = tasks.filter(t=>t.done).length;
+    const p = tasks.length ? Math.round(d/tasks.length*100) : 0;
+    return `
+      <div class="card clickable" onclick="go('sec-${sec.id}')">
+        <div class="card-top">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:18px">${sec.icon}</span>
+            <span style="font-size:14px;font-weight:600">${sec.title}</span>
+          </div>
+          <span class="card-accent" style="color:${sec.color}">${p}%</span>
+        </div>
+        <div class="prog">
+          <div class="prog-bar"><div class="prog-fill" style="width:${p}%;background:${sec.color}"></div></div>
+        </div>
+        <div style="font-size:12px;color:var(--t3);margin-top:4px">${d} из ${tasks.length} задач</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── TODAY ────────────────────────────────────────────────────────────────────
+function renderToday() {
+  const {done,total,pct} = totalPct();
+  let html = `
+    <div class="card" style="margin-bottom:14px">
+      <div class="prog">
+        <div class="prog-row"><span class="pl">Общий прогресс дня</span><span class="pr" style="color:var(--green)">${pct}%</span></div>
+        <div class="prog-bar" style="height:6px"><div class="prog-fill" style="width:${pct}%;background:var(--green)"></div></div>
+      </div>
+    </div>
+  `;
+  (S.sections||[]).forEach(sec => {
+    const tasks = sec.tasks||[];
+    html += `
+      <div class="card" style="margin-bottom:10px">
+        <div class="card-top">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span>${sec.icon}</span><span class="card-label">${sec.title}</span>
+          </div>
+          <button class="btn btn-sm" onclick="go('sec-${sec.id}')">Открыть →</button>
+        </div>
+        <div>${tasks.map((t,i) => taskEl(sec.id, i, t)).join('')}</div>
+        <div class="add-row">
+          <input type="text" id="ta-${sec.id}" placeholder="Быстрая задача...">
+          <button class="btn" onclick="quickAdd('${sec.id}','ta-${sec.id}')">+</button>
+        </div>
+      </div>
+    `;
+  });
+  document.getElementById('today-content').innerHTML = html;
+}
+
+// ── SECTION PAGES ─────────────────────────────────────────────────────────────
+function renderSectionPages() {
+  document.getElementById('section-pages').innerHTML = (S.sections||[]).map(sec => {
+    const tasks = sec.tasks||[];
+    const d = tasks.filter(t=>t.done).length;
+    const p = tasks.length ? Math.round(d/tasks.length*100) : 0;
+    return `
+      <div id="p-sec-${sec.id}" class="page hidden">
+        <div class="ph">
+          <div class="ph-left"><h1>${sec.icon} ${sec.title}</h1><p>${d} из ${tasks.length} выполнено сегодня</p></div>
+        </div>
+        <div class="card" style="margin-bottom:12px">
+          <div class="prog">
+            <div class="prog-row"><span class="pl">Прогресс раздела</span><span class="pr" style="color:${sec.color}">${p}%</span></div>
+            <div class="prog-bar" style="height:6px"><div class="prog-fill" style="width:${p}%;background:${sec.color}"></div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-top"><div class="card-label">Задачи</div>
+            <button class="btn btn-sm btn-red" onclick="deleteSection('${sec.id}')">Удалить раздел</button>
+          </div>
+          <div id="sec-tasks-${sec.id}">${tasks.map((t,i) => taskEl(sec.id, i, t)).join('')}</div>
+          <div class="add-row">
+            <input type="text" id="sa-${sec.id}" placeholder="Добавить задачу...">
+            <button class="btn btn-amber" onclick="quickAdd('${sec.id}','sa-${sec.id}')">+ Добавить</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function taskEl(secId, idx, t) {
+  return `<div class="task">
+    <div class="cb ${t.done?'on':''}" style="${t.done?'background:'+getSectionColor(secId)+';':''}" onclick="toggleTask('${secId}',${idx})"></div>
+    <span class="task-name ${t.done?'done':''}">${esc(t.name)}</span>
+    <span class="tdel" onclick="delTask('${secId}',${idx})">×</span>
+  </div>`;
+}
+
+function getSectionColor(id) {
+  const s = (S.sections||[]).find(x=>x.id===id);
+  return s ? s.color : '#f59e0b';
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── TASK ACTIONS ─────────────────────────────────────────────────────────────
+async function toggleTask(secId, idx) {
+  const sec = S.sections.find(s=>s.id===secId);
+  if(!sec) return;
+  sec.tasks[idx].done = !sec.tasks[idx].done;
+  await persist();
+  render();
+}
+
+async function delTask(secId, idx) {
+  const sec = S.sections.find(s=>s.id===secId);
+  if(!sec) return;
+  sec.tasks.splice(idx,1);
+  await persist();
+  render();
+}
+
+async function quickAdd(secId, inputId) {
+  const inp = document.getElementById(inputId);
+  if(!inp) return;
+  const val = inp.value.trim();
+  if(!val) return;
+  const sec = S.sections.find(s=>s.id===secId);
+  if(!sec) return;
+  sec.tasks.push({name:val, done:false, created: new Date().toISOString().slice(0,10)});
+  inp.value='';
+  await persist();
+  render();
+}
+
+// ── STATS ────────────────────────────────────────────────────────────────────
+function renderStats() {
+  const st  = S.stats||{};
+  const w   = parseFloat(st.weight)||53;
+  const pct = Math.min(100,Math.max(0,Math.round((w-53)/(60-53)*100)));
+
+  document.getElementById('curr-weight').textContent = w.toFixed(1)+' кг';
+  document.getElementById('weight-prog').innerHTML = `
+    <div class="prog">
+      <div class="prog-row"><span class="pl">${w.toFixed(1)} кг → 60 кг</span><span class="pr" style="color:var(--purple)">${pct}%</span></div>
+      <div class="prog-bar" style="height:5px"><div class="prog-fill" style="width:${pct}%;background:var(--purple)"></div></div>
+    </div>
+  `;
+  document.getElementById('ideaBox').textContent = IDEAS[ideaIdx % IDEAS.length];
+  if(st.views)  document.getElementById('sViews').placeholder = st.views;
+  if(st.subs)   document.getElementById('sSubs').placeholder  = st.subs;
+  if(st.income) document.getElementById('sInc').placeholder   = st.income;
+  document.getElementById('sWt').placeholder = w;
+}
+
+async function saveStats() {
+  if(!S.stats) S.stats={};
+  const v     = parseInt(document.getElementById('sVid').value)||0;
+  const views = parseInt(document.getElementById('sViews').value);
+  const subs  = parseInt(document.getElementById('sSubs').value);
+  const inc   = parseFloat(document.getElementById('sInc').value);
+  const today = new Date().toISOString().slice(0,10);
+
+  const old = S.stats.videos||0;
+  if(!isNaN(views)) S.stats.views  = views;
+  if(!isNaN(subs))  S.stats.subs   = subs;
+  if(!isNaN(inc))   S.stats.income = inc;
+  S.stats.videos = old + v;
+
+  if(v > 0) {
+    S.history = S.history||{};
+    S.history.videos = S.history.videos||[];
+    S.history.videos.push({date:today, count:v});
+  }
+
+  ['sVid','sViews','sSubs','sInc'].forEach(id => document.getElementById(id).value='');
+  await persist();
+  render();
+  toast('Статистика сохранена ✓');
+}
+
+async function saveWeight() {
+  const w = parseFloat(document.getElementById('sWt').value);
+  if(isNaN(w)||w<30||w>300){ toast('Введи корректный вес','err'); return; }
+  if(!S.stats) S.stats={};
+  S.stats.weight = w;
+  const today = new Date().toISOString().slice(0,10);
+  S.history = S.history||{};
+  S.history.weight = S.history.weight||[];
+  S.history.weight.push({date:today, value:w});
+  document.getElementById('sWt').value='';
+  await persist();
+  renderStats();
+  toast('Вес записан: '+w+' кг ✓');
+}
+
+function nextIdea() {
+  ideaIdx++;
+  document.getElementById('ideaBox').textContent = IDEAS[ideaIdx%IDEAS.length];
+}
+
+function copyIdea() {
+  const txt = document.getElementById('ideaBox').textContent;
+  navigator.clipboard.writeText(txt).then(()=>toast('Идея скопирована ✓'));
+}
+
+// ── HISTORY ──────────────────────────────────────────────────────────────────
+function renderHistory() {
+  const h = S.history||{};
+  drawChart('pct-chart',   h.day_pct||[],  'pct',   'var(--green)',  '%');
+  drawChart('weight-chart',h.weight||[],   'value', 'var(--purple)', ' кг');
+  drawChart('video-chart', h.videos||[],   'count', 'var(--amber)',  ' видео');
+}
+
+function drawChart(id, data, key, color, suffix) {
+  const el = document.getElementById(id);
+  if(!el) return;
+  if(!data.length){ el.innerHTML='<span style="color:var(--t3);font-size:13px">Данных пока нет</span>'; return; }
+  const max = Math.max(...data.map(d=>d[key]||0), 1);
+  el.innerHTML = data.slice(-30).map(d => {
+    const val = d[key]||0;
+    const h   = Math.max(4, Math.round(val/max*72));
+    return `<div class="bar" style="height:${h}px;background:${color};opacity:.7" data-tip="${d.date}: ${val}${suffix}"></div>`;
+  }).join('');
+}
+
+// ── NOTES ────────────────────────────────────────────────────────────────────
+function renderNotes() {
+  const notes = (S.notes||[]).slice().reverse();
+  document.getElementById('notes-count').textContent = notes.length+' заметок';
+  document.getElementById('notesList').innerHTML = notes.length
+    ? notes.map((n,i) => `
+        <div class="note">
+          <div class="note-head">
+            ${n.tag ? `<span class="pill" style="background:var(--bg4);color:var(--t2)">${n.tag}</span>` : '<span></span>'}
+            <span class="tdel" style="opacity:.4" onclick="delNote(${(S.notes||[]).length-1-i})">×</span>
+          </div>
+          <div class="note-txt">${esc(n.text)}</div>
+          <div class="note-date">${n.date}</div>
+        </div>
+      `).join('')
+    : '<div class="empty">Заметок пока нет. Записывай мысли — это твой дневник роста.</div>';
+}
+
+async function addNote() {
+  const inp = document.getElementById('noteInput');
+  const tag = document.getElementById('noteTag');
+  const val = inp.value.trim();
+  if(!val) return;
+  const now = new Date();
+  const d = `${now.getDate()}.${String(now.getMonth()+1).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  if(!S.notes) S.notes=[];
+  S.notes.push({text:val, tag:tag.value, date:d});
+  inp.value=''; tag.value='';
+  await persist();
+  renderNotes();
+  toast('Заметка сохранена ✓');
+}
+
+async function delNote(idx) {
+  S.notes.splice(idx,1);
+  await persist();
+  renderNotes();
+}
+
+// ── SETTINGS ─────────────────────────────────────────────────────────────────
+function renderSettings() {
+  if(S.start_date) document.getElementById('setStart').value = S.start_date;
+  if(S.end_date)   document.getElementById('setEnd').value   = S.end_date;
+  document.getElementById('settings-secs').innerHTML = (S.sections||[]).map((s,i) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b1)">
+      <span style="font-size:17px">${s.icon}</span>
+      <span style="flex:1;font-size:13px">${s.title}</span>
+      <span style="width:10px;height:10px;border-radius:50%;background:${s.color};flex-shrink:0;display:inline-block"></span>
+      <button class="btn btn-sm btn-red" onclick="deleteSection('${s.id}')">Удалить</button>
+    </div>
+  `).join('');
+}
+
+async function saveDates() {
+  S.start_date = document.getElementById('setStart').value;
+  S.end_date   = document.getElementById('setEnd').value;
+  await persist();
+  toast('Даты сохранены ✓');
+}
+
+async function deleteSection(id) {
+  if(!confirm('Удалить раздел и все его задачи?')) return;
+  S.sections = S.sections.filter(s=>s.id!==id);
+  await persist();
+  render();
+  go('dashboard');
+  toast('Раздел удалён');
+}
+
+async function resetAll() {
+  if(!confirm('Сбросить ВСЕ данные?')) return;
+  if(!confirm('Точно? Это нельзя отменить!')) return;
+  await api.post('/api/save', null);
+  location.reload();
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'growth_os_backup_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  toast('Данные экспортированы ✓');
+}
+
+async function manualBackup() {
+  const r = await api.post('/api/backup',{});
+  toast(r.path ? 'Бэкап создан: '+r.path : 'Бэкап уже есть сегодня');
+}
+
+// ── SECTIONS ─────────────────────────────────────────────────────────────────
+function pickColor(c, el) {
+  pickedColor = c;
+  document.getElementById('ms-color').value = c;
+  document.querySelectorAll('.color-swatch').forEach(e=>e.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+async function addSection() {
+  const name  = document.getElementById('ms-name').value.trim();
+  const icon  = document.getElementById('ms-icon').value.trim() || '📌';
+  const color = document.getElementById('ms-color').value || '#f59e0b';
+  if(!name){ toast('Введи название','err'); return; }
+  const id = 'sec_'+Date.now();
+  S.sections.push({id, icon, title:name, color, tasks:[]});
+  await persist();
+  closeModal('addSec');
+  document.getElementById('ms-name').value='';
+  document.getElementById('ms-icon').value='';
+  render();
+  go('sec-'+id);
+  toast('Раздел создан: '+name+' ✓');
+}
+
+// ── NAVIGATION ───────────────────────────────────────────────────────────────
+function go(name) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  const page = document.getElementById('p-'+name);
+  if(page) page.classList.remove('hidden');
+  const btn = document.getElementById('nb-'+name);
+  if(btn) btn.classList.add('active');
+  curPage = name;
+  closeMobile();
+}
+
+// ── MODAL ────────────────────────────────────────────────────────────────────
+function openModal(id){ document.getElementById('modal-'+id).classList.remove('hidden'); }
+function closeModal(id){ document.getElementById('modal-'+id).classList.add('hidden'); }
+function bgClose(e,id){ if(e.target===e.currentTarget) closeModal(id); }
+
+// ── MOBILE ───────────────────────────────────────────────────────────────────
+function openMobile(){
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('mob-overlay').classList.add('show');
+}
+function closeMobile(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('mob-overlay').classList.remove('show');
+}
+
+// ── TOAST ────────────────────────────────────────────────────────────────────
+function toast(msg, type='ok') {
+  const wrap = document.getElementById('toast-wrap');
+  const el   = document.createElement('div');
+  el.className = 'toast '+type;
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(()=>{
+    el.classList.add('out');
+    setTimeout(()=>el.remove(), 300);
+  }, 2200);
+}
+
+// ── KEYBOARD ─────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+  const map = {d:'dashboard',t:'today',s:'stats',n:'notes',h:'history'};
+  if(map[e.key.toLowerCase()]) go(map[e.key.toLowerCase()]);
+});
+
+init();
+</script>
 </body>
 </html>
 """
 
-# ── BACKEND LOGIC ─────────────────────────────────────────────────────────────
-
-def _load():
+# ── Бэкенд (Логика хранения и роутинга) ──────────────────────────────────────────────────
+def load():
     if not DATA_FILE.exists():
-        # Начальные данные, если файла нет
-        default = {
-            "end_date": "2026-06-16",
-            "last_date": str(date.today()),
-            "sections": [
-                {"id":"money", "title":"Деньги", "icon":"💰", "color":"#f59e0b", "tasks":[]},
-                {"id":"body", "title":"Тело", "icon":"💪", "color":"#8b5cf6", "tasks":[]},
-                {"id":"spirit", "title":"Духовность", "icon":"☪️", "color":"#22c55e", "tasks":[]}
-            ]
-        }
-        _save(default)
-        return default
-    return json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        d = default_data(); _save(d); return d
+    try:
+        return json.loads(DATA_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        log.error(f"load error: {e}")
+        return _load_backup() or default_data()
 
 def _save(data):
-    DATA_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp = DATA_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(DATA_FILE)
 
+def make_backup():
+    if not DATA_FILE.exists(): return
+    bp = BACKUP_DIR / f"data_{date.today()}.json"
+    if not bp.exists():
+        shutil.copy2(DATA_FILE, bp)
+        old = sorted(BACKUP_DIR.iterdir())
+        for f in old[:-30]: f.unlink()
+        log.info(f"Backup: {bp.name}")
+
+def _load_backup():
+    files = sorted(BACKUP_DIR.iterdir()) if BACKUP_DIR.exists() else []
+    if not files: return None
+    try: return json.loads(files[-1].read_text(encoding="utf-8"))
+    except: return None
+
+def default_data():
+    today = date.today().isoformat()
+    return {
+        "version": 2, "start_date": today,
+        "end_date": "2026-06-16", "last_date": today,
+        "streak": 1, "streak_days": [True],
+        "sections": [
+            {"id":"money","icon":"💰","title":"Деньги","color":"#f59e0b",
+             "tasks":[{"name":"Снять 2-3 Shorts","done":False},
+                      {"name":"Проанализировать просмотры","done":False},
+                      {"name":"Придумать хук для следующего видео","done":False}]},
+            {"id":"body","icon":"💪","title":"Тело","color":"#a78bfa",
+             "tasks":[{"name":"Тренировка","done":False},
+                      {"name":"Съесть 4-5 раз","done":False},
+                      {"name":"Выпить 2л воды","done":False}]},
+            {"id":"spirit","icon":"☪️","title":"Ахирет","color":"#34d399",
+             "tasks":[{"name":"Намаз x5","done":False},
+                      {"name":"Зикр утро/вечер","done":False},
+                      {"name":"Сира 20 мин","done":False},
+                      {"name":"Таджвид 15 мин","done":False}]},
+        ],
+        "stats": {"videos":0,"views":0,"subs":0,"income":0,"weight":53.0},
+        "history": {"weight":[],"videos":[],"day_pct":[]},
+        "notes": []
+    }
+
+def migrate(d):
+    d.setdefault("version",1)
+    d.setdefault("history",{"weight":[],"videos":[],"day_pct":[]})
+    d["history"].setdefault("weight",[])
+    d["history"].setdefault("videos",[])
+    d["history"].setdefault("day_pct",[])
+    d.setdefault("notes",[])
+    d.setdefault("stats",{"videos":0,"views":0,"subs":0,"income":0,"weight":53.0})
+    for s in d.get("sections",[]):
+        s.setdefault("color","#f59e0b")
+        s.setdefault("icon","📌")
+        for t in s.get("tasks",[]):
+            t.setdefault("done",False)
+    return d
+
+# ── API Роуты ────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
-    return Response(HTML, mimetype="text/html")
+    # Отдаем вшитый HTML-код без использования render_template
+    return Response(HTML, mimetype="text/html; charset=utf-8")
 
 @app.route("/api/data")
 def get_data():
-    return jsonify(_load())
+    data  = migrate(load())
+    today = date.today().isoformat()
+    if data.get("last_date") != today:
+        make_backup()
+        all_tasks = [t for s in data["sections"] for t in s["tasks"]]
+        done_cnt  = sum(1 for t in all_tasks if t["done"])
+        pct       = round(done_cnt/len(all_tasks)*100) if all_tasks else 0
+        data["history"]["day_pct"].append({"date":data.get("last_date",today),"pct":pct})
+        data["streak_days"].append(pct==100)
+        data["streak"] = (data["streak"]+1) if pct==100 else 1
+        for s in data["sections"]:
+            for t in s["tasks"]: t["done"] = False
+        data["last_date"] = today
+        _save(data)
+        log.info(f"New day: {today}, streak={data['streak']}, yesterday={pct}%")
+    return jsonify(data)
 
 @app.route("/api/save", methods=["POST"])
-def save_data():
-    data = request.json
-    _save(data)
-    return jsonify({"ok": True})
+def save_route():
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"ok":False,"error":"invalid body"}), 400
+    _save(migrate(body))
+    return jsonify({"ok":True})
+
+@app.route("/api/backup", methods=["POST"])
+def backup_route():
+    make_backup()
+    return jsonify({"ok":True})
 
 @app.route("/health")
-def health(): return "ok"
+def health():
+    return jsonify({"status":"ok","time":datetime.now().isoformat()})
+
+@app.errorhandler(404)
+def not_found(e): return jsonify({"error":"not found"}), 404
+
+@app.errorhandler(500)
+def err500(e): log.error(e); return jsonify({"error":str(e)}), 500
 
 if __name__ == "__main__":
-    from waitress import serve
-    serve(app, host="0.0.0.0
+    port = int(os.environ.get("PORT", 5000))
+    log.info(f"Growth OS starting on port {port}")
+    make_backup()
+    try:
+        from waitress import serve
+        log.info("Using waitress (production)")
+        serve(app, host="0.0.0.0", port=port, threads=4)
+    except ImportError:
+        app.run(host="0.0.0.0", port=port, debug=False)
