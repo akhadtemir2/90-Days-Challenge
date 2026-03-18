@@ -1,0 +1,63 @@
+{
+  "end_date": "2026-06-16",
+  "last_date": "2026-03-18",
+  "notes": [],
+  "sections": [
+    {
+      "color": "#f59e0b",
+      "icon": "💰",
+      "id": "money",
+      "tasks": [
+        {
+          "done": false,
+          "name": "Придумать хук для следующего видео"
+        }
+      ],
+      "title": "Деньги"
+    },
+    {
+      "color": "#8b5cf6",
+      "icon": "💪",
+      "id": "body",
+      "tasks": [
+        {
+          "done": false,
+          "name": "Тренировка (зал / дома)"
+        },
+        {
+          "done": false,
+          "name": "Съесть 4-5 раз"
+        },
+        {
+          "done": false,
+          "name": "Выпить 2л воды"
+        }
+      ],
+      "title": "Тело"
+    },
+    {
+      "color": "#22c55e",
+      "icon": "☪️",
+      "id": "spirit",
+      "tasks": [
+        {
+          "name": "Namaz 5x",
+          "done": false
+        }
+      ],
+      "title": "Ахирет"
+    }
+  ],
+  "start_date": "2026-03-18",
+  "stats": {
+    "income": 0,
+    "subs": 0,
+    "videos": 0,
+    "views": 0,
+    "weight": 53
+  },
+  "streak": 1,
+  "streak_days": [
+    true
+  ]
+}
